@@ -64,7 +64,7 @@ def preprocess_image_from_bytes(img_bytes):
 
     return img_final
 
-@app.route("/test", methods=["POST"])
+@app.route("/test", methods=["GET"])
 def test():
     if os.path.exists(model_path):
         return jsonify({"message": "Model loaded successfully"}), 200
