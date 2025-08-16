@@ -11,12 +11,12 @@ app = Flask(__name__)
 
 # ==== Load model ====
 model_path = "modelv1.h5"
-os.makedirs("models", exist_ok=True)
 
-file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
-url = f"https://drive.google.com/uc?id={file_id}"
-gdown.download(url, model_path, quiet=False, use_cookies=True)
-    
+if not os.path.exists(model_path):
+    file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, model_path, quiet=False, use_cookies=True)
+
 model = tf.keras.models.load_model(model_path)
 
 CLASS_INFO = {
@@ -73,24 +73,29 @@ def predict():
     file = request.files["file"]
     img_bytes = file.read()
 
-    # Preprocess
-    processed_img = preprocess_image_from_bytes(img_bytes)
+    try:
+        # Preprocess
+        processed_img = preprocess_image_from_bytes(img_bytes)
 
-    # Prediksi CNN
-    preds = model.predict(processed_img)
-    class_idx = int(np.argmax(preds, axis=1)[0])
-    confidence = float(np.max(preds))
+        # Prediksi CNN
+        preds = model.predict(processed_img)
+        class_idx = int(np.argmax(preds, axis=1)[0])
+        confidence = float(np.max(preds))
 
-    # Ambil info kelas
-    info = CLASS_INFO[class_idx]
+        # Ambil info kelas
+        info = CLASS_INFO[class_idx]
 
-    return jsonify({
-        "code": info["code"],
-        "brand": info["brand"],
-        "size": info["size"],
-        "weight": info["weight"],
-        "confidence": confidence
-    })
+        return jsonify({
+            "code": info["code"],
+            "brand": info["brand"],
+            "size": info["size"],
+            "weight": info["weight"],
+            "confidence": confidence
+        })
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 400
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
