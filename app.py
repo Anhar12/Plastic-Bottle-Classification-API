@@ -18,9 +18,13 @@ model_path = os.path.join(volume_path, "modelv1.h5")
 file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
 url = f"https://drive.google.com/uc?id={file_id}"
 
+done_flag = os.path.join(volume_path, "download_done.txt")
+
 # Hanya download jika file belum ada
 if not os.path.exists(model_path):
     gdown.download(url, model_path, quiet=False, use_cookies=True)
+    with open(done_flag, "w") as f:
+        f.write("done")
 
 model = tf.keras.models.load_model(model_path)
 
@@ -71,7 +75,7 @@ def preprocess_image_from_bytes(img_bytes):
 
 @app.route("/test", methods=["GET"])
 def test():
-    if os.path.exists(model_path):
+    if os.path.exists(model_path) and os.path.exists(done_flag):
         return jsonify({"message": "Model loaded successfully"}), 200
     else:
         return jsonify({"error": "Model file not found"}), 404
