@@ -45,15 +45,15 @@ def preprocess_image_from_bytes(img_bytes):
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
     # CLAHE untuk kontras
-    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l_clahe = clahe.apply(l)
-    lab_clahe = cv2.merge((l_clahe, a, b))
-    img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
+    # lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    # l, a, b = cv2.split(lab)
+    # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    # l_clahe = clahe.apply(l)
+    # lab_clahe = cv2.merge((l_clahe, a, b))
+    # img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
     # Canny edge
-    edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
+    edges = cv2.Canny(img, threshold1=50, threshold2=180)
 
     # Resize sesuai input model CNN
     img_resized = cv2.resize(edges, (244, 244))
