@@ -1,19 +1,15 @@
 from flask import Flask, request, jsonify
 import numpy as np
 import cv2
-import tensorflow as tf
-import os
-import requests
 from io import BytesIO
 from PIL import Image
-from tensorflow.keras.models import load_model
+import tensorflow as tf 
 
 app = Flask(__name__)
 
-# ==== Load model CNN ====
-model = load_model('bestmodel.h5')
+# ==== Load model sekali di awal ====
+model = tf.keras.models.load_model("bestmodel.h5")  # ganti sesuai format modelmu
 
-# ==== Mapping kelas A-K ====
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
     1: {"code": "B", "brand": "Le Minerale", "size": "1500ml", "weight": 29},
@@ -28,10 +24,8 @@ CLASS_INFO = {
     10: {"code": "K", "brand": "Pristine", "size": "600ml", "weight": 23},
 }
 
-
 # ==== Fungsi preprocessing ====
 def preprocess_image_from_bytes(img_bytes):
-    # Buka dengan PIL lalu convert ke array OpenCV
     img = Image.open(BytesIO(img_bytes)).convert("RGB")
     img = np.array(img)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -47,13 +41,13 @@ def preprocess_image_from_bytes(img_bytes):
     # Canny edge
     edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
 
-    # Resize sesuai input model CNN (contoh 128x128)
-    img_resized = cv2.resize(edges, (128, 128))
+    # Resize sesuai input model CNN
+    img_resized = cv2.resize(edges, (244, 244))
 
-    # Normalisasi [0,1]
+    # Normalisasi
     img_normalized = img_resized.astype("float32") / 255.0
 
-    # Tambah dimensi (H, W, 1) karena grayscale
+    # (H, W, 1) grayscale
     img_final = np.expand_dims(img_normalized, axis=-1)
 
     # Tambah batch dimensi (1, H, W, 1)
@@ -61,23 +55,14 @@ def preprocess_image_from_bytes(img_bytes):
 
     return img_final
 
-
-# ==== Endpoint predict dari Supabase URL ====
+# ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
-    if not data or "url" not in data:
-        return jsonify({"error": "Missing 'url' in JSON body"}), 400
+    if "file" not in request.files:
+        return jsonify({"error": "Missing file"}), 400
 
-    image_url = data["url"]
-
-    try:
-        # Ambil gambar dari Supabase bucket storage
-        response = requests.get(image_url)
-        response.raise_for_status()
-        img_bytes = response.content
-    except Exception as e:
-        return jsonify({"error": f"Failed to download image: {str(e)}"}), 400
+    file = request.files["file"]
+    img_bytes = file.read()
 
     # Preprocess
     processed_img = preprocess_image_from_bytes(img_bytes)
@@ -98,6 +83,6 @@ def predict():
         "confidence": confidence
     })
 
-
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
