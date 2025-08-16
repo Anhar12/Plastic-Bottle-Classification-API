@@ -26,6 +26,8 @@ if not os.path.exists(model_path):
     gdown.download(url, model_path, quiet=False, use_cookies=True)
     with open(done_flag, "w") as f:
         f.write("done")
+    
+model = tf.keras.models.load_model(model_path)
 
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
@@ -68,27 +70,10 @@ def preprocess_image(img):
 
     return img_final
 
-# Cors Handling if using web
-@app.after_request
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'POST'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-    return response
-    
-@app.route("/ls", methods=["GET"])
-def ls_files():
-    if os.path.exists(volume_path):
-        return {"files": os.listdir(volume_path)}
-    else:
-        return {"error": "Folder model tidak ada"}
-
 # ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        model = tf.keras.models.load_model(model_path)
-        
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
 
