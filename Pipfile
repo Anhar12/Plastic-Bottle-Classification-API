@@ -11,6 +11,7 @@ pillow = "*"
 requests = "*"
 tensorflow = "*"
 gunicorn = "*"
+gdown = "*"
 
 [dev-packages]
 
