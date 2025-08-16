@@ -10,11 +10,17 @@ import gdown
 app = Flask(__name__)
 
 # ==== Load model ====
-model_path = "modelv1.h5"
+volume_path = "/models"
+os.makedirs(volume_path, exist_ok=True)  # pastikan folder ada
+model_path = os.path.join(volume_path, "modelv1.h5")
 
+# File Google Drive
 file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
 url = f"https://drive.google.com/uc?id={file_id}"
-gdown.download(url, model_path, quiet=False, use_cookies=True)
+
+# Hanya download jika file belum ada
+if not os.path.exists(model_path):
+    gdown.download(url, model_path, quiet=False, use_cookies=True)
 
 model = tf.keras.models.load_model(model_path)
 
