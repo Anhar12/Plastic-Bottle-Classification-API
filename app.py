@@ -6,6 +6,7 @@ from PIL import Image
 import tensorflow as tf 
 import os
 import gdown
+import tempfile
 
 app = Flask(__name__)
 
@@ -43,21 +44,17 @@ CLASS_INFO = {
 }
 
 # ==== Fungsi preprocessing ====
-def preprocess_image_from_bytes(img_bytes):
-    img = Image.open(BytesIO(img_bytes)).convert("RGB")
-    img = np.array(img)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-    # CLAHE untuk kontras
-    # lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    # l, a, b = cv2.split(lab)
-    # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    # l_clahe = clahe.apply(l)
-    # lab_clahe = cv2.merge((l_clahe, a, b))
-    # img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
+def preprocess_image(img):
+    # CLAHE untuk tingkatkan kontras objek
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    l_clahe = clahe.apply(l)
+    lab_clahe = cv2.merge((l_clahe, a, b))
+    img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
     # Canny edge
-    edges = cv2.Canny(img, threshold1=50, threshold2=180)
+    edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
 
     # Resize sesuai input model CNN
     img_resized = cv2.resize(edges, (244, 244))
@@ -72,6 +69,14 @@ def preprocess_image_from_bytes(img_bytes):
     img_final = np.expand_dims(img_final, axis=0)
 
     return img_final
+
+# Cors Handling if using web
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
 
 @app.route("/test", methods=["GET"])
 def test():
@@ -91,15 +96,17 @@ def ls_files():
 # ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
 def predict():
-    if "file" not in request.files:
-        return jsonify({"error": "Missing file"}), 400
-
-    file = request.files["file"]
-    img_bytes = file.read()
-
     try:
+        if "file" not in request.files:
+            return jsonify({"error": "Missing file"}), 400
+
+        file = request.files["file"]
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        file.save(temp_file.name)
+        images = cv2.imread(temp_file.name)
+        
         # Preprocess
-        processed_img = preprocess_image_from_bytes(img_bytes)
+        processed_img = preprocess_image(images)
 
         # Prediksi CNN
         preds = model.predict(processed_img)
@@ -108,6 +115,8 @@ def predict():
 
         # Ambil info kelas
         info = CLASS_INFO[class_idx]
+        
+        temp_file.close()
 
         return jsonify({
             "code": info["code"],
