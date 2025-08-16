@@ -79,6 +79,14 @@ def test():
         return jsonify({"message": "Model loaded successfully"}), 200
     else:
         return jsonify({"error": "Model file not found"}), 404
+    
+@app.route("/ls", methods=["GET"])
+def ls_files():
+    model_dir = "/models"  # path mount Volume
+    if os.path.exists(model_dir):
+        return {"files": os.listdir(model_dir)}
+    else:
+        return {"error": "Folder model tidak ada"}
 
 # ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
