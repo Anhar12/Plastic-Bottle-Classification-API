@@ -64,6 +64,13 @@ def preprocess_image_from_bytes(img_bytes):
 
     return img_final
 
+@app.route("/test", methods=["POST"])
+def test():
+    if os.path.exists(model_path):
+        return jsonify({"message": "Model loaded successfully"}), 200
+    else:
+        return jsonify({"error": "Model file not found"}), 404
+
 # ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
 def predict():
