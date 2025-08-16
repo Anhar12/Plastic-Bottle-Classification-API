@@ -15,6 +15,7 @@ os.makedirs("models", exist_ok=True)
 
 file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
 url = f"https://drive.google.com/uc?id={file_id}"
+gdown.download(url, model_path, quiet=False, use_cookies=True)
     
 model = tf.keras.models.load_model(model_path)
 
