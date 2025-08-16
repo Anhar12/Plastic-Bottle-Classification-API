@@ -27,8 +27,6 @@ if not os.path.exists(model_path):
     with open(done_flag, "w") as f:
         f.write("done")
 
-model = tf.keras.models.load_model(model_path)
-
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
     1: {"code": "B", "brand": "Le Minerale", "size": "1500ml", "weight": 29},
@@ -77,19 +75,11 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = 'POST'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     return response
-
-@app.route("/test", methods=["GET"])
-def test():
-    if model:
-        return jsonify({"message": "Model loaded successfully"}), 200
-    else:
-        return jsonify({"error": "Model file not found"}), 404
     
 @app.route("/ls", methods=["GET"])
 def ls_files():
-    model_dir = "/models"  # path mount Volume
-    if os.path.exists(model_dir):
-        return {"files": os.listdir(model_dir)}
+    if os.path.exists(volume_path):
+        return {"files": os.listdir(volume_path)}
     else:
         return {"error": "Folder model tidak ada"}
 
@@ -97,6 +87,8 @@ def ls_files():
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
+        model = tf.keras.models.load_model(model_path)
+        
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
 
