@@ -19,15 +19,17 @@ model_path = os.path.join(volume_path, "modelv1.h5")
 file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
 url = f"https://drive.google.com/uc?id={file_id}"
 
-done_flag = os.path.join(volume_path, "download_done.txt")
-
 # Hanya download jika file belum ada
 if not os.path.exists(model_path):
     gdown.download(url, model_path, quiet=False, use_cookies=True)
-    with open(done_flag, "w") as f:
-        f.write("done")
     
-model = tf.keras.models.load_model(model_path)
+model = None
+
+def load_model():
+    global model
+    if model is None:
+        model = tf.keras.models.load_model(model_path)
+    return model
 
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
@@ -74,6 +76,7 @@ def preprocess_image(img):
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
+        
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
 
@@ -81,6 +84,8 @@ def predict():
         temp_file = tempfile.NamedTemporaryFile(delete=False)
         file.save(temp_file.name)
         images = cv2.imread(temp_file.name)
+        
+        model = load_model()
         
         # Preprocess
         processed_img = preprocess_image(images)
@@ -93,6 +98,7 @@ def predict():
         # Ambil info kelas
         info = CLASS_INFO[class_idx]
         
+        os.remove(temp_file.name)
         temp_file.close()
 
         return jsonify({
