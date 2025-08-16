@@ -80,7 +80,7 @@ def add_cors_headers(response):
 
 @app.route("/test", methods=["GET"])
 def test():
-    if os.path.exists(model_path) and os.path.exists(done_flag):
+    if model:
         return jsonify({"message": "Model loaded successfully"}), 200
     else:
         return jsonify({"error": "Model file not found"}), 404
