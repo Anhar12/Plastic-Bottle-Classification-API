@@ -11,7 +11,7 @@ import tempfile
 app = Flask(__name__)
 
 # ==== Load model ====
-volume_path = "/models"
+volume_path = "/app/models/"
 os.makedirs(volume_path, exist_ok=True)  # pastikan folder ada
 model_path = os.path.join(volume_path, "modelv1.h5")
 
@@ -108,23 +108,22 @@ def predict():
         # Preprocess
         processed_img = preprocess_image(images)
 
-        # # Prediksi CNN
-        # preds = model.predict(processed_img)
-        # class_idx = int(np.argmax(preds, axis=1)[0])
-        # confidence = float(np.max(preds))
+        # Prediksi CNN
+        preds = model.predict(processed_img)
+        class_idx = int(np.argmax(preds, axis=1)[0])
+        confidence = float(np.max(preds))
 
-        # # Ambil info kelas
-        # info = CLASS_INFO[class_idx]
+        # Ambil info kelas
+        info = CLASS_INFO[class_idx]
         
         temp_file.close()
 
         return jsonify({
-            # "code": info["code"],
-            # "brand": info["brand"],
-            # "size": info["size"],
-            # "weight": info["weight"],
-            # "confidence": confidence
-            "image": processed_img.tolist()
+            "code": info["code"],
+            "brand": info["brand"],
+            "size": info["size"],
+            "weight": info["weight"],
+            "confidence": confidence
         })
     except Exception as e:
         return jsonify({
