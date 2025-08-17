@@ -55,7 +55,17 @@ CLASS_INFO = {
     10: {"code": "K", "brand": "Pristine", "size": "600ml", "weight": 23},
 }
 
+def compress_image(img_bgr, max_size=800):
+    h, w = img_bgr.shape[:2]
+    scale = max(h, w) / max_size
+    if scale > 1:  # resize hanya jika lebih besar dari max_size
+        new_w, new_h = int(w / scale), int(h / scale)
+        img_bgr = cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return img_bgr
+
 def preprocess_image_bgr(img_bgr: np.ndarray):
+    img_bgr = compress_image(img_bgr, max_size=800)
+    
     # CLAHE
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
@@ -92,7 +102,7 @@ def predict():
         preds = pred_fn(tf.convert_to_tensor(x))
         preds = preds.numpy()
         class_idx = int(np.argmax(preds, axis=1)[0])
-        confidence = float(np.max(preds))
+        confidence = float(np.max(preds)) * 100
 
         info = CLASS_INFO[class_idx]
         return jsonify({
@@ -100,7 +110,7 @@ def predict():
             "brand": info["brand"],
             "size": info["size"],
             "weight": info["weight"],
-            "confidence": confidence
+            "confidence": round(confidence, 2)
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -114,5 +124,4 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    # Untuk dev lokal saja; di Railway pakai Gunicorn + -w 1
     app.run(host="0.0.0.0", port=port, threaded=False)
