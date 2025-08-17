@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
 import numpy as np
 import cv2
-from io import BytesIO
-from PIL import Image
 import tensorflow as tf 
 import os
 import gdown
@@ -16,7 +14,7 @@ os.makedirs(volume_path, exist_ok=True)  # pastikan folder ada
 model_path = os.path.join(volume_path, "modelv1.h5")
 
 # File Google Drive
-file_id = "1fiG4tBfBLG6_WU_xUbI2k6ss93E901DX"
+file_id = "1hcf6bUA7m0bKnWNFsRY_bBAL4h07tHdx"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 # Hanya download jika file belum ada
@@ -48,15 +46,15 @@ CLASS_INFO = {
 # ==== Fungsi preprocessing ====
 def preprocess_image(img):
     # CLAHE untuk tingkatkan kontras objek
-    # lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    # l, a, b = cv2.split(lab)
-    # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    # l_clahe = clahe.apply(l)
-    # lab_clahe = cv2.merge((l_clahe, a, b))
-    # img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    l_clahe = clahe.apply(l)
+    lab_clahe = cv2.merge((l_clahe, a, b))
+    img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
     # Canny edge
-    edges = cv2.Canny(img, threshold1=50, threshold2=180)
+    edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
 
     # Resize sesuai input model CNN
     img_resized = cv2.resize(edges, (244, 244))
