@@ -1,33 +1,45 @@
 from flask import Flask, request, jsonify
 import numpy as np
 import cv2
-import tensorflow as tf 
+import tensorflow as tf
 import os
 import gdown
-import tempfile
+
+# ====== ENV & TF thread limits (pasang ini paling atas) ======
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
 
 app = Flask(__name__)
 
-# ==== Load model ====
-volume_path = "/app/models/"
-os.makedirs(volume_path, exist_ok=True)  # pastikan folder ada
+# ====== Model path & download ======
+volume_path = "/app/models"
+os.makedirs(volume_path, exist_ok=True)
 model_path = os.path.join(volume_path, "modelv1.h5")
 
-# File Google Drive
 file_id = "1hcf6bUA7m0bKnWNFsRY_bBAL4h07tHdx"
 url = f"https://drive.google.com/uc?id={file_id}"
 
-# Hanya download jika file belum ada
 if not os.path.exists(model_path):
     gdown.download(url, model_path, quiet=False, use_cookies=True)
-    
-model = None
 
-def load_model():
-    global model
+model = None
+predict_fn = None
+
+def get_model():
+    global model, predict_fn
     if model is None:
-        model = tf.keras.models.load_model(model_path)
-    return model
+        m = tf.keras.models.load_model(model_path)
+        # Siapkan predict function sekali biar tidak retrace tiap request
+        @tf.function(experimental_relax_shapes=True)
+        def _pred(x):
+            return m(x, training=False)
+        model = m
+        predict_fn = _pred
+    return model, predict_fn
 
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
@@ -43,61 +55,46 @@ CLASS_INFO = {
     10: {"code": "K", "brand": "Pristine", "size": "600ml", "weight": 23},
 }
 
-# ==== Fungsi preprocessing ====
-def preprocess_image(img):
-    # CLAHE untuk tingkatkan kontras objek
-    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+def preprocess_image_bgr(img_bgr: np.ndarray):
+    # CLAHE
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     l_clahe = clahe.apply(l)
     lab_clahe = cv2.merge((l_clahe, a, b))
     img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
-    # Canny edge
+    # Canny
     edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
 
-    # Resize sesuai input model CNN
+    # Resize -> (244, 244, 1)
     img_resized = cv2.resize(edges, (244, 244))
-
-    # Normalisasi
     img_normalized = img_resized.astype("float32") / 255.0
-
-    # (H, W, 1) grayscale
-    img_final = np.expand_dims(img_normalized, axis=-1)
-
-    # Tambah batch dimensi (1, H, W, 1)
-    img_final = np.expand_dims(img_final, axis=0)
-
+    img_final = np.expand_dims(img_normalized, axis=-1)   # (244,244,1)
+    img_final = np.expand_dims(img_final, axis=0)         # (1,244,244,1)
     return img_final
 
-# ==== Endpoint predict dengan file upload ====
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
 
-        file = request.files["file"]
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        file.save(temp_file.name)
-        images = cv2.imread(temp_file.name)
-        
-        model = load_model()
-        
-        # Preprocess
-        processed_img = preprocess_image(images)
+        # Decode image from memory
+        file_bytes = np.frombuffer(request.files["file"].read(), np.uint8)
+        img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        if img_bgr is None:
+            return jsonify({"error": "Invalid image"}), 400
 
-        # Prediksi CNN
-        preds = model.predict(processed_img)
+        _, pred_fn = get_model()
+        x = preprocess_image_bgr(img_bgr)
+
+        preds = pred_fn(tf.convert_to_tensor(x))
+        preds = preds.numpy()
         class_idx = int(np.argmax(preds, axis=1)[0])
         confidence = float(np.max(preds))
 
-        # Ambil info kelas
         info = CLASS_INFO[class_idx]
-        
-        os.remove(temp_file.name)
-        temp_file.close()
-
         return jsonify({
             "code": info["code"],
             "brand": info["brand"],
@@ -106,10 +103,16 @@ def predict():
             "confidence": confidence
         })
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 400
+        return jsonify({"error": str(e)}), 400
+
+@app.get("/health")
+def health():
+    ok = os.path.exists(model_path)
+    size = os.path.getsize(model_path) if ok else 0
+    loaded = model is not None
+    return {"model_file": ok, "size_mb": round(size/1024/1024, 2), "loaded": loaded}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # Untuk dev lokal saja; di Railway pakai Gunicorn + -w 1
+    app.run(host="0.0.0.0", port=port, threaded=False)
