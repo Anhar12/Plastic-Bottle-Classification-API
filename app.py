@@ -55,6 +55,9 @@ CLASS_INFO = {
     10: {"code": "K", "brand": "Pristine", "size": "600ml", "weight": 23},
 }
 
+bg_color = np.array([132,132,132])
+tolerance = np.array([15, 15, 15])
+
 def preprocess_image_bgr(img_bgr: np.ndarray):
     # CLAHE
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
@@ -64,8 +67,24 @@ def preprocess_image_bgr(img_bgr: np.ndarray):
     lab_clahe = cv2.merge((l_clahe, a, b))
     img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
-    # Canny
-    edges = cv2.Canny(img_clahe, threshold1=50, threshold2=180)
+    # Buat mask background
+    lower = np.clip(bg_color - tolerance, 0, 255)
+    upper = np.clip(bg_color + tolerance, 0, 255)
+    mask_bg = cv2.inRange(img_clahe, lower, upper)
+
+    # Perbesar mask sedikit biar nutup tepi objek
+    mask_bg_dilated = cv2.dilate(mask_bg, np.ones((5,5), np.uint8))
+
+    # Blur hanya di bagian tepi background
+    blurred = img_clahe.copy()
+    blurred_bg = cv2.GaussianBlur(img_clahe, (3,3), 0)
+    blurred[mask_bg_dilated > 0] = blurred_bg[mask_bg_dilated > 0]
+
+    # Canny edge
+    edges = cv2.Canny(blurred, threshold1=50, threshold2=180)
+
+    # Hapus edge yang masih di background murni
+    edges[mask_bg > 0] = 0
 
     # Resize -> (244, 244, 1)
     img_resized = cv2.resize(edges, (244, 244))
