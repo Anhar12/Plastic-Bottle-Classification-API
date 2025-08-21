@@ -58,7 +58,17 @@ CLASS_INFO = {
 bg_color = np.array([132,132,132])
 tolerance = np.array([15, 15, 15])
 
+def compress_image(img_bgr, max_size=800):
+    h, w = img_bgr.shape[:2]
+    scale = max(h, w) / max_size
+    if scale > 1:  # resize hanya jika lebih besar dari max_size
+        new_w, new_h = int(w / scale), int(h / scale)
+        img_bgr = cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return img_bgr
+
 def preprocess_image_bgr(img_bgr: np.ndarray):
+    img_bgr = compress_image(img_bgr, max_size=800)
+    
     # CLAHE
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
