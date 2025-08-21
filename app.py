@@ -18,9 +18,9 @@ app = Flask(__name__)
 # ====== Model path & download ======
 volume_path = "/app/models"
 os.makedirs(volume_path, exist_ok=True)
-model_path = os.path.join(volume_path, "modelv1.h5")
+model_path = os.path.join(volume_path, "modelv3.h5")
 
-file_id = "1hcf6bUA7m0bKnWNFsRY_bBAL4h07tHdx"
+file_id = "1ny3HiRiMBDiwVc5Y-0sbFpyRiQuPZR05"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
@@ -62,7 +62,7 @@ def preprocess_image_bgr(img_bgr: np.ndarray):
     # CLAHE
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=1.25, tileGridSize=(16, 16))
     l_clahe = clahe.apply(l)
     lab_clahe = cv2.merge((l_clahe, a, b))
     img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
