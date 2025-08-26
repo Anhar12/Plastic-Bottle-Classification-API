@@ -18,9 +18,9 @@ app = Flask(__name__)
 # ====== Model path & download ======
 volume_path = "/app/models"
 os.makedirs(volume_path, exist_ok=True)
-model_path = os.path.join(volume_path, "modelv3.h5")
+model_path = os.path.join(volume_path, "modelv1.h5")
 
-file_id = "1ny3HiRiMBDiwVc5Y-0sbFpyRiQuPZR05"
+file_id = "11UKY0PlGvoSubD_X3LXWrEvVoehG8nBl"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
@@ -116,7 +116,12 @@ def predict():
             return jsonify({"error": "Invalid image"}), 400
 
         _, pred_fn = get_model()
-        x = preprocess_image_bgr(img_bgr)
+        
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        img_resized = cv2.resize(img_rgb, (244, 244))
+        img_normalized = img_resized.astype("float32") / 255.0
+
+        x = np.expand_dims(img_normalized, axis=0)
 
         preds = pred_fn(tf.convert_to_tensor(x))
         preds = preds.numpy()
@@ -133,13 +138,6 @@ def predict():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-
-@app.get("/health")
-def health():
-    ok = os.path.exists(model_path)
-    size = os.path.getsize(model_path) if ok else 0
-    loaded = model is not None
-    return {"model_file": ok, "size_mb": round(size/1024/1024, 2), "loaded": loaded}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
