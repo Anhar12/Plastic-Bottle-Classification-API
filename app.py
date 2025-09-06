@@ -6,6 +6,7 @@ import os
 import gdown
 import uuid
 import mysql.connector
+from urllib.parse import urlparse
 from datetime import datetime
 
 # ====== ENV & TF thread limits (pasang ini paling atas) ======
@@ -35,15 +36,6 @@ if not os.path.exists(model_path):
 model = None
 predict_fn = None
 
-
-DB_CONFIG = {
-    "host": os.getenv("MYSQLHOST", "localhost"),
-    "user": os.getenv("MYSQLUSER", "root"),
-    "password": os.getenv("MYSQLPASSWORD", ""),
-    "database": os.getenv("MYSQLDATABASE", "test"),
-    "port": int(os.getenv("MYSQLPORT", 3306)),
-}
-
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
     1: {"code": "B", "brand": "Le Minerale", "size": "1500ml", "weight": 29},
@@ -70,7 +62,21 @@ def get_model():
     return model, predict_fn
 
 def get_db():
-    return mysql.connector.connect(**DB_CONFIG)
+    mysql_url = os.getenv("MYSQL_PUBLIC_URL")
+
+    if not mysql_url:
+        raise Exception("MYSQL_PUBLIC_URL not found in environment variables")
+
+    url = urlparse(mysql_url)
+
+    conn = mysql.connector.connect(
+        host=url.hostname,
+        user=url.username,
+        password=url.password,
+        database=url.path.lstrip("/"),
+        port=url.port or 3306,
+    )
+    return conn
 
 bg_color = np.array([132,132,132])
 tolerance = np.array([15, 15, 15])
