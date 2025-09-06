@@ -5,6 +5,7 @@ import tensorflow as tf
 import os
 import gdown
 import uuid
+import mysql.connector
 from datetime import datetime
 
 # ====== ENV & TF thread limits (pasang ini paling atas) ======
@@ -34,16 +35,14 @@ if not os.path.exists(model_path):
 model = None
 predict_fn = None
 
-def get_model():
-    global model, predict_fn
-    if model is None:
-        m = tf.keras.models.load_model(model_path)
-        @tf.function(experimental_relax_shapes=True)
-        def _pred(x):
-            return m(x, training=False)
-        model = m
-        predict_fn = _pred
-    return model, predict_fn
+
+DB_CONFIG = {
+    "host": os.getenv("MYSQLHOST", "localhost"),
+    "user": os.getenv("MYSQLUSER", "root"),
+    "password": os.getenv("MYSQLPASSWORD", ""),
+    "database": os.getenv("MYSQLDATABASE", "test"),
+    "port": int(os.getenv("MYSQLPORT", 3306)),
+}
 
 CLASS_INFO = {
     0: {"code": "A", "brand": "Vit", "size": "1500ml", "weight": 27},
@@ -58,6 +57,20 @@ CLASS_INFO = {
     9: {"code": "J", "brand": "Crystaline", "size": "600ml", "weight": 17},
     10: {"code": "K", "brand": "Pristine", "size": "600ml", "weight": 23},
 }
+
+def get_model():
+    global model, predict_fn
+    if model is None:
+        m = tf.keras.models.load_model(model_path)
+        @tf.function(experimental_relax_shapes=True)
+        def _pred(x):
+            return m(x, training=False)
+        model = m
+        predict_fn = _pred
+    return model, predict_fn
+
+def get_db():
+    return mysql.connector.connect(**DB_CONFIG)
 
 bg_color = np.array([132,132,132])
 tolerance = np.array([15, 15, 15])
@@ -138,6 +151,21 @@ def predict():
         confidence = float(np.max(preds)) * 100
 
         info = CLASS_INFO[class_idx]
+        
+         # Insert ke MySQL
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO predictions (filename, code, brand, size, weight, confidence)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (filename, info["code"], info["brand"], info["size"], info["weight"], confidence),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        
         return jsonify({
             "code": info["code"],
             "brand": info["brand"],
@@ -148,15 +176,15 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-@app.route("/images", methods=["GET"])
-def list_images():
-    files = os.listdir(UPLOAD_FOLDER)
-    files.sort(reverse=True)
-    return jsonify(files)
-
-@app.route("/images/<path:filename>", methods=["GET"])
-def get_image(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+@app.route("/records", methods=["GET"])
+def list_records():
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM predictions ORDER BY created_at DESC")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
 
 @app.route("/")
 def index():
