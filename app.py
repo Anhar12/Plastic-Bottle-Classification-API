@@ -166,7 +166,7 @@ def predict():
             INSERT INTO predictions (filename, code, brand, size, weight, confidence)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (filename, info["code"], info["brand"], info["size"], info["weight"], confidence),
+            (filename, info["code"], info["brand"], info["size"], info["weight"], round(confidence, 2)),
         )
         conn.commit()
         cur.close()
