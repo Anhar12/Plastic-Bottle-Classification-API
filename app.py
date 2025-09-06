@@ -186,7 +186,7 @@ def predict():
 def list_records():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT * FROM predictions ORDER BY created_at DESC")
+    cur.execute("SELECT * FROM predictions ORDER BY id DESC")
     rows = cur.fetchall()
     cur.close()
     conn.close()
