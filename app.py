@@ -113,14 +113,13 @@ def predict():
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
         
+        file = request.files["file"]
         filename = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4()) + ".jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-        # Simpan gambar ke folder
-        request.files["file"].save(filepath)
+        file.save(filepath)
 
         # Decode image from memory
-        file_bytes = np.frombuffer(request.files["file"].read(), np.uint8)
+        file_bytes = np.frombuffer(open(filepath, "rb").read(), np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         if img_bgr is None:
             return jsonify({"error": "Invalid image"}), 400
