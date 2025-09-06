@@ -1,9 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, render_template
 import numpy as np
 import cv2
 import tensorflow as tf
 import os
 import gdown
+import uuid
+from datetime import datetime
 
 # ====== ENV & TF thread limits (pasang ini paling atas) ======
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -16,11 +18,14 @@ tf.config.threading.set_inter_op_parallelism_threads(1)
 app = Flask(__name__)
 
 # ====== Model path & download ======
-volume_path = "/app/models"
-os.makedirs(volume_path, exist_ok=True)
-model_path = os.path.join(volume_path, "modelv1.h5")
+VOLUME_PATH = "/app/models"
+os.makedirs(VOLUME_PATH, exist_ok=True)
+model_path = os.path.join(VOLUME_PATH, "modelv6.h5")
 
-file_id = "11UKY0PlGvoSubD_X3LXWrEvVoehG8nBl"
+UPLOAD_FOLDER = os.path.join(VOLUME_PATH, "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+file_id = "1DUd--sm9-6SM9IbkyGg2HtIyaL1D-HdP"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
@@ -33,7 +38,6 @@ def get_model():
     global model, predict_fn
     if model is None:
         m = tf.keras.models.load_model(model_path)
-        # Siapkan predict function sekali biar tidak retrace tiap request
         @tf.function(experimental_relax_shapes=True)
         def _pred(x):
             return m(x, training=False)
@@ -96,11 +100,11 @@ def preprocess_image_bgr(img_bgr: np.ndarray):
     # Hapus edge yang masih di background murni
     edges[mask_bg > 0] = 0
 
-    # Resize -> (244, 244, 1)
-    img_resized = cv2.resize(edges, (244, 244))
+    # Resize -> (224, 224, 1)
+    img_resized = cv2.resize(edges, (224, 224))
     img_normalized = img_resized.astype("float32") / 255.0
-    img_final = np.expand_dims(img_normalized, axis=-1)   # (244,244,1)
-    img_final = np.expand_dims(img_final, axis=0)         # (1,244,244,1)
+    img_final = np.expand_dims(img_normalized, axis=-1)   # (224,224,1)
+    img_final = np.expand_dims(img_final, axis=0)         # (1,224,224,1)
     return img_final
 
 @app.route("/predict", methods=["POST"])
@@ -108,17 +112,23 @@ def predict():
     try:
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
+        
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4()) + ".jpg"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+        # Simpan gambar ke folder
+        request.files["file"].save(filepath)
 
         # Decode image from memory
         file_bytes = np.frombuffer(request.files["file"].read(), np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         if img_bgr is None:
             return jsonify({"error": "Invalid image"}), 400
-
+        
         _, pred_fn = get_model()
         
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        img_resized = cv2.resize(img_rgb, (244, 244))
+        img_resized = cv2.resize(img_rgb, (224, 224))
         img_normalized = img_resized.astype("float32") / 255.0
 
         x = np.expand_dims(img_normalized, axis=0)
@@ -138,6 +148,20 @@ def predict():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+@app.route("/images", methods=["GET"])
+def list_images():
+    files = os.listdir(UPLOAD_FOLDER)
+    files.sort(reverse=True)
+    return jsonify(files)
+
+@app.route("/images/<path:filename>", methods=["GET"])
+def get_image(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

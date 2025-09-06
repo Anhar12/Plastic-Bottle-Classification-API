@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Uploaded Images</title>
+  <style>
+    body { font-family: sans-serif; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, 200px); gap: 10px; }
+    .grid img { width: 200px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Uploaded Images</h1>
+  <div id="gallery" class="grid"></div>
+
+  <script>
+    async function loadImages() {
+      const res = await fetch("/images");
+      const files = await res.json();
+      const gallery = document.getElementById("gallery");
+      gallery.innerHTML = "";
+      files.forEach(f => {
+        const img = document.createElement("img");
+        img.src = "/images/" + f;
+        gallery.appendChild(img);
+      });
+    }
+    loadImages();
+  </script>
+</body>
+</html>
