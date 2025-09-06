@@ -32,17 +32,20 @@
       const records = await res.json();
       const tbody = document.getElementById("records-body");
       tbody.innerHTML = "";
+      let idx = 1;
       records.forEach(r => {
         const row = document.createElement("tr");
         row.innerHTML = `
-          <td><img src="/images/${r.filename}" alt="${r.code}" class="img-thumbnail" style="max-width:100px;"></td>
+          <td>${idx}</td>
+          <td><img src="/images/${r.filename}" alt="${r.brand}" loading="lazy" class="img-thumbnail" style="max-width:100px;"></td>
           <td>${r.code}</td>
           <td>${r.brand}</td>
           <td>${r.size}</td>
           <td>${r.weight}</td>
-          <td><span class="badge bg-primary">${r.confidence}%</span></td>
+          <td>${r.confidence}%</td>
         `;
         tbody.appendChild(row);
+        idx++;
       });
     }
     loadRecords();

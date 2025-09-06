@@ -192,6 +192,16 @@ def list_records():
     conn.close()
     return jsonify(rows)
 
+@app.route("/images", methods=["GET"])
+def list_images():
+    files = os.listdir(UPLOAD_FOLDER)
+    files.sort(reverse=True)
+    return jsonify(files)
+
+@app.route("/images/<path:filename>", methods=["GET"])
+def get_image(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
 @app.route("/")
 def index():
     return render_template("index.html")
