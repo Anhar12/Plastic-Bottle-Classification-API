@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory, render_template
 import numpy as np
 import cv2
 import tensorflow as tf
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 import os
 import gdown
 import uuid
@@ -22,12 +23,12 @@ app = Flask(__name__)
 # ====== Model path & download ======
 VOLUME_PATH = "/app/models"
 os.makedirs(VOLUME_PATH, exist_ok=True)
-model_path = os.path.join(VOLUME_PATH, "modelv6.h5")
+model_path = os.path.join(VOLUME_PATH, "best_model_2.keras")
 
 UPLOAD_FOLDER = os.path.join(VOLUME_PATH, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-file_id = "1DUd--sm9-6SM9IbkyGg2HtIyaL1D-HdP"
+file_id = "1-mMfyfXhE9q0sVtzLwrrikbpf1RgLM0v"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
@@ -52,13 +53,17 @@ CLASS_INFO = {
 
 def get_model():
     global model, predict_fn
+
     if model is None:
         m = tf.keras.models.load_model(model_path)
-        @tf.function(experimental_relax_shapes=True)
+        
+        @tf.function(reduce_retracing=True)
         def _pred(x):
             return m(x, training=False)
+
         model = m
         predict_fn = _pred
+
     return model, predict_fn
 
 def get_db():
@@ -84,94 +89,45 @@ tolerance = np.array([15, 15, 15])
 def compress_image(img_bgr, max_size=800):
     h, w = img_bgr.shape[:2]
     scale = max(h, w) / max_size
-    if scale > 1:  # resize hanya jika lebih besar dari max_size
+    if scale > 1:
         new_w, new_h = int(w / scale), int(h / scale)
         img_bgr = cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
     return img_bgr
-
-def preprocess_image_bgr(img_bgr: np.ndarray):
-    img_bgr = compress_image(img_bgr, max_size=800)
-    
-    # CLAHE
-    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=1.25, tileGridSize=(16, 16))
-    l_clahe = clahe.apply(l)
-    lab_clahe = cv2.merge((l_clahe, a, b))
-    img_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
-
-    # Buat mask background
-    lower = np.clip(bg_color - tolerance, 0, 255)
-    upper = np.clip(bg_color + tolerance, 0, 255)
-    mask_bg = cv2.inRange(img_clahe, lower, upper)
-
-    # Perbesar mask sedikit biar nutup tepi objek
-    mask_bg_dilated = cv2.dilate(mask_bg, np.ones((5,5), np.uint8))
-
-    # Blur hanya di bagian tepi background
-    blurred = img_clahe.copy()
-    blurred_bg = cv2.GaussianBlur(img_clahe, (3,3), 0)
-    blurred[mask_bg_dilated > 0] = blurred_bg[mask_bg_dilated > 0]
-
-    # Canny edge
-    edges = cv2.Canny(blurred, threshold1=50, threshold2=180)
-
-    # Hapus edge yang masih di background murni
-    edges[mask_bg > 0] = 0
-
-    # Resize -> (224, 224, 1)
-    img_resized = cv2.resize(edges, (224, 224))
-    img_normalized = img_resized.astype("float32") / 255.0
-    img_final = np.expand_dims(img_normalized, axis=-1)   # (224,224,1)
-    img_final = np.expand_dims(img_final, axis=0)         # (1,224,224,1)
-    return img_final
 
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         if "file" not in request.files:
             return jsonify({"error": "Missing file"}), 400
-        
+
         file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Empty filename"}), 400
+
+        # simpan file
         filename = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4()) + ".jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file.save(filepath)
 
-        # Decode image from memory
-        file_bytes = np.frombuffer(open(filepath, "rb").read(), np.uint8)
-        img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        img_bgr = cv2.imread(filepath)
         if img_bgr is None:
             return jsonify({"error": "Invalid image"}), 400
-        
+
         _, pred_fn = get_model()
-        
+
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        img_resized = cv2.resize(img_rgb, (224, 224))
-        img_normalized = img_resized.astype("float32") / 255.0
+        img_resized = cv2.resize(img_rgb, (224, 224)).astype(np.float32)
 
-        x = np.expand_dims(img_normalized, axis=0)
+        x = np.expand_dims(img_resized, axis=0)
+        x = preprocess_input(x)
 
-        preds = pred_fn(tf.convert_to_tensor(x))
-        preds = preds.numpy()
+        preds = pred_fn(tf.convert_to_tensor(x)).numpy()
         class_idx = int(np.argmax(preds, axis=1)[0])
         confidence = float(np.max(preds)) * 100
 
         info = CLASS_INFO[class_idx]
-        
-         # Insert ke MySQL
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO predictions (filename, code, brand, size, weight, confidence)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (filename, info["code"], info["brand"], info["size"], info["weight"], round(confidence, 2)),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        
+
         return jsonify({
             "code": info["code"],
             "brand": info["brand"],
@@ -179,6 +135,7 @@ def predict():
             "weight": info["weight"],
             "confidence": round(confidence, 2)
         })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
