@@ -1,1 +1,0 @@
-web: gunicorn app:app --preload --workers=2 --threads=1 --timeout=120
