@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory, render_template
 import numpy as np
 import cv2
 import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 import os
 import gdown
 import uuid
@@ -23,12 +22,12 @@ app = Flask(__name__)
 # ====== Model path & download ======
 VOLUME_PATH = "/app/models"
 os.makedirs(VOLUME_PATH, exist_ok=True)
-model_path = os.path.join(VOLUME_PATH, "best_model_2.keras")
+model_path = os.path.join(VOLUME_PATH, "modelv7.h5")
 
 UPLOAD_FOLDER = os.path.join(VOLUME_PATH, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-file_id = "1-mMfyfXhE9q0sVtzLwrrikbpf1RgLM0v"
+file_id = "1msblAlKZN62mPzznQo-cE1gG5KuEndcY"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
