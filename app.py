@@ -22,12 +22,12 @@ app = Flask(__name__)
 # ====== Model path & download ======
 VOLUME_PATH = "/app/models"
 os.makedirs(VOLUME_PATH, exist_ok=True)
-model_path = os.path.join(VOLUME_PATH, "modelv7.h5")
+model_path = os.path.join(VOLUME_PATH, "modelv8.h5")
 
 UPLOAD_FOLDER = os.path.join(VOLUME_PATH, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-file_id = "1msblAlKZN62mPzznQo-cE1gG5KuEndcY"
+file_id = "1CSZrQ7quH9aCjWvFW1WUkw9zy2LIMWVc"
 url = f"https://drive.google.com/uc?id={file_id}"
 
 if not os.path.exists(model_path):
