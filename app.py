@@ -6,32 +6,32 @@ import os
 import gdown
 import uuid
 import mysql.connector
+import json
 from urllib.parse import urlparse
 from datetime import datetime
 
-# ====== ENV & TF thread limits (pasang ini paling atas) ======
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
 os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+
 tf.config.threading.set_intra_op_parallelism_threads(1)
 tf.config.threading.set_inter_op_parallelism_threads(1)
 
 app = Flask(__name__)
 
-# ====== Model path & download ======
 VOLUME_PATH = "/app/models"
-os.makedirs(VOLUME_PATH, exist_ok=True)
-model_path = os.path.join(VOLUME_PATH, "modelv7.h5")
-
 UPLOAD_FOLDER = os.path.join(VOLUME_PATH, "uploads")
+MODEL_PATH = os.path.join(VOLUME_PATH, "modelv6.h5")
+
+os.makedirs(VOLUME_PATH, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-file_id = "1msblAlKZN62mPzznQo-cE1gG5KuEndcY"
-url = f"https://drive.google.com/uc?id={file_id}"
+file_id = "1DUd--sm9-6SM9IbkyGg2HtIyaL1D-HdP"
+model_url = f"https://drive.google.com/uc?id={file_id}"
 
-if not os.path.exists(model_path):
-    gdown.download(url, model_path, quiet=False, use_cookies=True)
+if not os.path.exists(MODEL_PATH):
+    gdown.download(model_url, MODEL_PATH, quiet=False, use_cookies=True)
 
 model = None
 predict_fn = None
@@ -53,30 +53,47 @@ CLASS_INFO = {
 def get_model():
     global model, predict_fn
     if model is None:
-        m = tf.keras.models.load_model(model_path)
+        m = tf.keras.models.load_model(MODEL_PATH)
+
         @tf.function(experimental_relax_shapes=True)
-        def _pred(x):
+        def _predict(x):
             return m(x, training=False)
+
         model = m
-        predict_fn = _pred
+        predict_fn = _predict
+
     return model, predict_fn
 
 def get_db():
     mysql_url = os.getenv("MYSQL_PUBLIC_URL")
-
     if not mysql_url:
-        raise Exception("MYSQL_PUBLIC_URL not found in environment variables")
+        raise Exception("MYSQL_PUBLIC_URL not set")
 
     url = urlparse(mysql_url)
-
-    conn = mysql.connector.connect(
+    return mysql.connector.connect(
         host=url.hostname,
         user=url.username,
         password=url.password,
         database=url.path.lstrip("/"),
         port=url.port or 3306,
     )
-    return conn
+
+def save_prediction_to_db(filename, code, brand, size, weight, confidence, preds):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO predictions
+        (filename, code, brand, size, weight, confidence, preds)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (filename, code, brand, size, weight, confidence, preds)
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -85,37 +102,50 @@ def predict():
             return jsonify({"error": "Missing file"}), 400
 
         file = request.files["file"]
-        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4()) + ".jpg"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
 
-        file_bytes = np.frombuffer(open(filepath, "rb").read(), np.uint8)
+        # Decode image from memory
+        file_bytes = np.frombuffer(file.read(), np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
         if img_bgr is None:
             return jsonify({"error": "Invalid image"}), 400
 
-        _, pred_fn = get_model()
+        # Save image after decode
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4()) + ".jpg"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.seek(0)
+        file.save(filepath)
 
-        img_lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(img_lab)
-
-        clahe = cv2.createCLAHE(clipLimit=4, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-
-        img_lab = cv2.merge((l, a, b))
-        img_bgr = cv2.cvtColor(img_lab, cv2.COLOR_LAB2BGR)
-
+        # Preprocess
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         img_rgb = cv2.resize(img_rgb, (224, 224), interpolation=cv2.INTER_AREA)
         img_rgb = img_rgb.astype("float32") / 255.0
-
         x = np.expand_dims(img_rgb, axis=0)
 
-        preds = pred_fn(tf.convert_to_tensor(x)).numpy()
-        class_idx = int(np.argmax(preds, axis=1)[0])
-        confidence = float(np.max(preds)) * 100
+        _, pred_fn = get_model()
+        preds = pred_fn(tf.convert_to_tensor(x)).numpy()[0]
 
+        class_idx = int(np.argmax(preds))
+        if class_idx not in CLASS_INFO:
+            return jsonify({"error": "Invalid prediction output"}), 500
+
+        confidence = float(np.max(preds)) * 100
         info = CLASS_INFO[class_idx]
+
+        preds_json = json.dumps({
+            CLASS_INFO[i]["code"]: float(preds[i])
+            for i in range(len(preds))
+        })
+
+        save_prediction_to_db(
+            filename=filename,
+            code=info["code"],
+            brand=info["brand"],
+            size=info["size"],
+            weight=info["weight"],
+            confidence=confidence,
+            preds=preds_json
+        )
 
         return jsonify({
             "code": info["code"],
@@ -126,7 +156,7 @@ def predict():
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/records", methods=["GET"])
 def list_records():
@@ -140,13 +170,32 @@ def list_records():
 
 @app.route("/images", methods=["GET"])
 def list_images():
-    files = os.listdir(UPLOAD_FOLDER)
-    files.sort(reverse=True)
+    files = sorted(os.listdir(UPLOAD_FOLDER), reverse=True)
     return jsonify(files)
 
 @app.route("/images/<path:filename>", methods=["GET"])
 def get_image(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route("/reset", methods=["DELETE"])
+def reset_all():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM predictions")
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        for f in os.listdir(UPLOAD_FOLDER):
+            fp = os.path.join(UPLOAD_FOLDER, f)
+            if os.path.isfile(fp):
+                os.remove(fp)
+
+        return jsonify({"status": "OK", "message": "Database and files cleared"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/")
 def index():
